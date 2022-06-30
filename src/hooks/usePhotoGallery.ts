@@ -10,6 +10,8 @@ export interface UserPhoto {
   webviewPath?: string;
 }
 
+const PHOTO_STORAGE = 'photos';
+
 export function usePhotoGallery() {
   const savePicture = async (photo: Photo, fileName: string): Promise<UserPhoto> => {
     const base64Data = await base64FromPath(photo.webPath!);
@@ -26,17 +28,40 @@ export function usePhotoGallery() {
       webviewPath: photo.webPath,
     };
   };
+
   const [photos, setPhotos] = useState<UserPhoto[]>([])
+
+  useEffect(() => {
+    const loadSaved = async () => {
+      const { value } = await Storage.get({ key: PHOTO_STORAGE });
+      const photosInStorage = (value ? JSON.parse(value) : []) as UserPhoto[];
+
+      for (let photo of photosInStorage) {
+        const file = await Filesystem.readFile({
+          path: photo.filepath,
+          directory: Directory.Data,
+        });
+        // Web platform only: Load the photo as base64 data
+        photo.webviewPath = `data:image/jpeg;base64,${file.data}`;
+      }
+      setPhotos(photosInStorage);
+    };
+    loadSaved();
+  }, []);
+
   const takePhoto = async () => {
     const photo = await Camera.getPhoto({
       resultType: CameraResultType.Uri,
       source: CameraSource.Camera,
       quality: 100,
     });
+
     const fileName = new Date().getTime() + '.jpeg';
     const savedFileImage = await savePicture(photo, fileName);
     const newPhotos = [savedFileImage, ...photos];
-    setPhotos(newPhotos)
+    setPhotos(newPhotos);
+
+    Storage.set({ key: PHOTO_STORAGE, value: JSON.stringify(newPhotos) });
   };
 
   return {
@@ -45,7 +70,7 @@ export function usePhotoGallery() {
   };
 }
 
-
+// The base64FromPath method is a helper util that downloads a file from the supplied path and returns a base64 representation of that file.
 
 export async function base64FromPath(path: string): Promise<string> {
   const response = await fetch(path);
